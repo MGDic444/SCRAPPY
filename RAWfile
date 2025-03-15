@@ -1,0 +1,187 @@
+#include <LiquidCrystal.h> // Es la biblioteca de la pantalla LSD
+#include <Servo.h> // Es la biblioteca del servo
+
+#define SPEAKERPIN 3
+#define NUMWORDS 10
+#define SERVO_PIN 10 // Definir el pin del servo
+
+Servo myServo; // Declarar el objeto Servo
+
+// Define notas para el buzzer
+#define LOWNOTE 100
+#define ALOW 440
+#define CLOW 261
+#define ELOW 329
+#define FLOW 349
+#define CHIGH 523
+#define EHIGH 659
+#define GHIGH 784
+#define FSHIGH 740
+#define AHIGH 880
+
+#define btnRight 0
+#define btnUp 1
+#define btnDown 2
+#define btnLeft 3
+#define btnSelect 4
+#define btnNone 5
+
+void(* resetFunc) (void) = 0;
+
+const char* words[] = {"constelations", "hackathon", "scrappy", "python", "coding", "javascript", "electronics", "program", "story"};
+const char letterVal[] = "abcdefghijklmnopqrstuvwxyz";
+char guessLetter;
+char guessLast;
+char guessed[25];
+char* secretWord;
+int guessedCount = 1;
+int wordSize;
+int gotOne = 0;
+int alreadyGuessed = 0;
+int showAsterisk = 0;
+int buttonState;
+int hangman = 0;
+int totalRight = 0;
+int sel = 0;
+int prevKey = btnNone;
+unsigned long lastDebounceTime = 0;
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+String guessWord = String(10);
+
+void setup() {
+    Serial.begin(9600);
+    pinMode(SPEAKERPIN, OUTPUT);
+    lcd.begin(16, 2);
+    lcd.clear();
+    lcd.setCursor(2, 0);
+    lcd.print("HANGMANDUINO");
+    delay(2000);
+   
+    myServo.attach(SERVO_PIN); // Inicializar el servo
+    myServo.write(0); // Posición inicial
+   
+    randomSeed(analogRead(5));
+    newWord();
+    draw_board();
+}
+
+void newWord() {
+    int pick = random(NUMWORDS);
+    const char* pickWord = words[pick];
+    guessWord = pickWord;
+    wordSize = guessWord.length();
+    Serial.println(guessWord);
+}
+
+void draw_board() {
+    lcd.clear();
+    lcd.home();
+    lcd.setCursor(0, 1);
+    for (int x = 0; x < wordSize; x++) {
+        lcd.print("_");
+    }
+}
+
+void loop() {
+    int k = inkeys();
+    if ( k == btnSelect ) {
+        gotOne = 0;
+        if (alreadyGuessed == 0) {
+            alreadyGuessed = 1;
+            lcd.setCursor(9, 0);
+            lcd.print("*");
+            char buf[wordSize+1];
+            guessWord.toCharArray(buf,wordSize+1);
+            for (int i = 0; i < wordSize; i++) {
+                if (buf[i] == guessLetter) {
+                    lcd.setCursor(i + 3, 1);
+                    lcd.print(guessLetter);
+                    gotOne = 1;
+                    totalRight = totalRight + 1;
+                }
+            }
+            guessed[guessedCount] = guessLetter;
+            guessedCount++;
+            if (gotOne == 0) {
+                buzz(LOWNOTE, 500);
+                hangman++;
+                if (hangman >= 7) {
+                    gameOver(0);
+                }
+            } else {
+                buzz(FSHIGH, 30);
+                buzz(AHIGH, 50);
+            }
+            if (totalRight == wordSize) {
+                gameOver(1);
+            }
+        }
+    }
+}
+
+void gameOver(int whatToDo) {
+    switch (whatToDo) {
+        case 0:
+            lcd.clear();
+            lcd.setCursor(6, 0);
+            lcd.print("GAME");
+            lcd.setCursor(6, 1);
+            lcd.print("OVER");
+            buzz(ELOW, 500);
+            buzz(CLOW, 1000);
+           
+            myServo.write(90);
+            delay(5000);
+            myServo.write(0);
+           
+            break;
+        case 1:
+            lcd.clear();
+            lcd.setCursor(4, 0);
+            lcd.print("HANGMAN");
+            lcd.setCursor(4, 1);
+            lcd.print("MASTER!");
+            buzz(ALOW, 150);
+            buzz(CHIGH, 150);
+            buzz(EHIGH, 150);
+            buzz(AHIGH, 150);
+            delay(150);
+            buzz(GHIGH, 150);
+            buzz(AHIGH, 500);
+    }
+    delay(2000);
+    resetFunc();
+}
+
+void buzz (int frequencyInHertz, long timeInMilliseconds) {
+    long delayAmount = (long)(1000000 / frequencyInHertz);
+    long loopTime = (long)((timeInMilliseconds * 1000) / (delayAmount * 2));
+    for (int x = 0; x < loopTime; x++) {
+        digitalWrite(SPEAKERPIN, HIGH);
+        delayMicroseconds(delayAmount);
+        digitalWrite(SPEAKERPIN, LOW);
+        delayMicroseconds(delayAmount);
+    }
+    delay(20);
+}
+
+int getKey() {
+    int b = analogRead(A0);
+    if (b > 1000) return btnNone;
+    delay(8);
+    if (b < 66) return btnRight;
+    if (b < 221) return btnUp;
+    if (b < 396) return btnDown;
+    if (b < 602) return btnLeft;
+    if (b < 902) return btnSelect;
+}
+
+int inkeys() {
+    int k = getKey();
+    while (k == btnNone) {
+        k = getKey();
+        delay(10);
+    }
+    delay(200);
+    return k;
+}
